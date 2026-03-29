@@ -1,0 +1,157 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// --- NEXTAUTH MODELS ---
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// --- APP MODELS ---
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users          User[]
+  leads          Lead[]
+  products       Product[]
+  scripts        Script[]
+  checkoutEvents CheckoutEvent[]
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  password      String?
+  image         String?
+  role          String    @default("ADMIN") // ADMIN, MEMBER
+  tenantId      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant   Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  accounts Account[]
+  sessions Session[]
+}
+
+model Lead {
+  id        String   @id @default(cuid())
+  tenantId  String
+  phone     String
+  name      String?
+  status    String   @default("NEW_LEAD") // NEW_LEAD, DIAGNOSIS, OFFER_SENT, CHECKOUT_CLICKED, PURCHASE_COMPLETED, MANUAL
+  productId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  messages       Message[]
+  checkoutEvents CheckoutEvent[]
+  product        Product?        @relation(fields: [productId], references: [id])
+
+  @@unique([tenantId, phone])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  leadId    String
+  content   String
+  role      String   // 'user' or 'system'
+  createdAt DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  price       Float
+  description String?
+  checkoutUrl String?
+  platform    String?
+  language    String?  @default("PT-BR")
+  
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leads          Lead[]
+  checkoutEvents CheckoutEvent[]
+}
+
+model Script {
+  id          String       @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  steps       ScriptStep[]
+}
+
+model ScriptStep {
+  id          String @id @default(cuid())
+  scriptId    String
+  order       Int
+  messageText String
+  delayMins   Int?   @default(0)
+
+  script Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+}
+
+model CheckoutEvent {
+  id            String   @id @default(cuid())
+  tenantId      String
+  leadId        String
+  productId     String
+  transactionId String?
+  platform      String?
+  status        String   // 'pending', 'completed', 'failed'
+  amount        Float
+  createdAt     DateTime @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead    Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
