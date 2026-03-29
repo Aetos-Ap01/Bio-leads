@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ received: true, ignored: true });
     }
 
-    const lead = await prisma.lead.findUnique({ where: { phone: leadPhone } });
+    const lead = await prisma.lead.findFirst({ where: { phone: leadPhone } });
     if (!lead) {
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
