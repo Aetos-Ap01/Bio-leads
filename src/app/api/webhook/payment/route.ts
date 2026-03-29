@@ -25,10 +25,17 @@ export async function POST(request: Request) {
 
     let finalProductId = productId || lead.productId;
     if (!finalProductId) {
-      let defaultProduct = await prisma.product.findFirst();
+      let defaultProduct = await prisma.product.findFirst({
+        where: { tenantId: lead.tenantId }
+      });
       if (!defaultProduct) {
         defaultProduct = await prisma.product.create({
-          data: { name: 'Automated Checkout Product', price: Number(amount) || 0, platform: platform || 'internal' },
+          data: { 
+            name: 'Automated Checkout Product', 
+            price: Number(amount) || 0, 
+            platform: platform || 'internal',
+            tenantId: lead.tenantId
+          },
         });
       }
       finalProductId = defaultProduct.id;
@@ -37,6 +44,7 @@ export async function POST(request: Request) {
     // Register real CheckoutEvent
     await prisma.checkoutEvent.create({
       data: {
+        tenantId: lead.tenantId,
         leadId: lead.id,
         productId: finalProductId, 
         transactionId: transactionId || `txn_${Date.now()}`,
