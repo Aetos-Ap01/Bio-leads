@@ -12,7 +12,9 @@ export default async function ConversationsPage() {
 
   const leads = await prisma.lead.findMany({
     where: { tenantId: session.user.tenantId },
-    include: { messages: { orderBy: { createdAt: 'asc' } } },
+    include: { messages: { orderBy: { createdAt: 'asc' } } 
+  product: true
+},
     orderBy: { updatedAt: 'desc' }
   });
 
