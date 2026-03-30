@@ -1,19 +1,24 @@
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
 export default async function ConversationsPage() {
   const session = await getServerSession(authOptions);
 
+  if (!session?.user?.tenantId) {
+    redirect("/login");
+  }
+
   const leads = await prisma.lead.findMany({
-    where: { tenantId: session?.user?.tenantId as string },
-    include: { messages: { orderBy: { createdAt: 'asc' } }, product: true, checkoutEvents: { orderBy: { createdAt: 'desc' } } },
+    where: { tenantId: session.user.tenantId },
+    include: { messages: { orderBy: { createdAt: 'asc' } } },
     orderBy: { updatedAt: 'desc' }
   });
-  
-  const activeLead = leads[0]; // Active selection dummy for layout
 
-  return (
+  const activeLead = leads[0];
+
+  return(
     <div className="flex h-[calc(100vh-64px)] bg-[#0B0F19]">
       {/* LEFT PANEL */}
       <div className="w-80 border-r border-[#1e293b] bg-[#121826] flex flex-col hidden md:flex shrink-0">
