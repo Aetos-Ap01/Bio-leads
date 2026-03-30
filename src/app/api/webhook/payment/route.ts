@@ -61,7 +61,7 @@ export async function POST(request: Request) {
     });
 
     // Post-purchase automated thanking message!
-    await sendBotMessage(lead.id, "Pagamento confirmado! 🎉 Muito obrigado pela confiança. Seu acesso detalhado chegará no seu e-mail em instantes.");
+    await sendBotMessage(lead.tenantId,lead.id,lead.phone,"Pagamento confirmado! 🎉 Muito obrigado pela confiança. Seu acesso detalhado chegará no seu e-mail em instantes.");
 
     return NextResponse.json({ success: true, message: 'Purchase registered and processed successfully' });
   } catch (error) {
