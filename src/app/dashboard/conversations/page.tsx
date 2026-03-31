@@ -14,7 +14,8 @@ export default async function ConversationsPage() {
     where: { tenantId: session.user.tenantId },
     include: {
       messages: { orderBy: { createdAt: 'asc' } },
-      product: true
+      product: true,
+      checkoutEvents: true
     },
     orderBy: { updatedAt: 'desc' }
   });
