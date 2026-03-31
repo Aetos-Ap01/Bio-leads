@@ -1,7 +1,17 @@
 import { prisma } from '@/lib/prisma';
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
 export default async function LeadsPage() {
+  const session = await getServerSession(authOptions);
+
+  if (!session?.user?.tenantId) {
+    redirect("/login");
+  }
+
   const leads = await prisma.lead.findMany({
+    where: { tenantId: session.user.tenantId },
     include: {
       product: true,
       messages: { orderBy: { createdAt: 'desc' }, take: 1 }

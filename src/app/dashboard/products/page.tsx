@@ -1,11 +1,17 @@
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
 export default async function ProductsPage() {
   const session = await getServerSession(authOptions);
+
+  if (!session?.user?.tenantId) {
+    redirect("/login");
+  }
+
   const products = await prisma.product.findMany({
-    where: { tenantId: session?.user?.tenantId }
+    where: { tenantId: session.user.tenantId }
   });
 
   return (
