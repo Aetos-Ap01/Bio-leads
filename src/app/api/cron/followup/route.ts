@@ -2,7 +2,15 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sendBotMessage } from '@/lib/chatbot';
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Protect cron route: only Vercel Cron or requests with valid secret can trigger
+  const authHeader = request.headers.get('authorization');
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const leads = await prisma.lead.findMany({
       where: {
