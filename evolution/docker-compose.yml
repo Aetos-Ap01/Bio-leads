@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  evolution-api:
+    container_name: evolution_api
+    image: atendai/evolution-api:latest
+    restart: always
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - evolution-net
+    depends_on:
+      - evolution-redis
+
+  evolution-redis:
+    container_name: evolution_redis
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - evolution-net
+
+  # NO local postgres — usamos Supabase diretamente
+
+networks:
+  evolution-net:
+    driver: bridge
+
+volumes:
+  evolution_instances:
+  redis_data:
