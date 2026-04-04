@@ -2,53 +2,63 @@ import { prisma } from '@/lib/prisma';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import MetricsChart from '@/components/MetricsChart';
 
 export default async function DashboardMainPage() {
   const session = await getServerSession(authOptions);
+  if (!session?.user?.tenantId) redirect("/login");
 
-  if (!session?.user?.tenantId) {
-    redirect("/login");
-  }
+  const tenantId = session.user.tenantId;
 
-  const leads = await prisma.lead.findMany({
-    where: { tenantId: session.user.tenantId }
+  const leads = await prisma.lead.findMany({ where: { tenantId } });
+  const purchases = await prisma.checkoutEvent.findMany({
+    where: { tenantId, status: 'completed' },
+    orderBy: { createdAt: 'asc' }
   });
 
   const followupStat = await prisma.followupStat.findFirst({
-    where: { tenantId: session.user.tenantId },
+    where: { tenantId },
     orderBy: { createdAt: 'desc' },
   });
 
   const commercialFollowUpsSent = followupStat?.sentCount ?? 0;
-  
-  const today = new Date();
-  today.setHours(0,0,0,0);
-
+  const today = new Date(); today.setHours(0,0,0,0);
   const leadsToday = leads.filter(l => l.createdAt >= today).length;
-  
-  // Stages count
+
   const countNewLead = leads.filter(l => l.status === 'NEW_LEAD').length;
   const countDiagnosis = leads.filter(l => l.status === 'DIAGNOSIS').length;
   const countOffer = leads.filter(l => l.status === 'OFFER_SENT').length;
   const countCheckout = leads.filter(l => l.status === 'CHECKOUT_CLICKED').length;
   const countPurchase = leads.filter(l => l.status === 'PURCHASE_COMPLETED').length;
-  
+
+  // Build 7-day chart data
+  const days: { label: string; leads: number; purchases: number }[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - i);
+    const next = new Date(d); next.setDate(next.getDate() + 1);
+    days.push({
+      label: d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' }),
+      leads: leads.filter(l => l.createdAt >= d && l.createdAt < next).length,
+      purchases: purchases.filter(p => p.createdAt >= d && p.createdAt < next).length,
+    });
+  }
+
   return (
     <div className="p-8">
-      <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400 mb-8">
-        Overview
-      </h1>
+      <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400 mb-8">Overview</h1>
 
-      {/* METRIC CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-        <MetricCard title="Leads Today" value={leadsToday} icon="👥" color="border-[#6366F1]" />
-        <MetricCard title="Offers Sent" value={countOffer + countCheckout + countPurchase} icon="🚀" color="border-[#F59E0B]" />
-        <MetricCard title="Follow-ups Sent" value={commercialFollowUpsSent} icon="📈" color="border-[#10B981]" />
-        <MetricCard title="Purchases Completed" value={countPurchase} icon="💰" color="border-[#22C55E]" />
+        <MetricCard title="Leads Hoje" value={leadsToday} icon="👥" color="border-[#6366F1]" />
+        <MetricCard title="Ofertas Enviadas" value={countOffer + countCheckout + countPurchase} icon="🚀" color="border-[#F59E0B]" />
+        <MetricCard title="Follow-ups Enviados" value={commercialFollowUpsSent} icon="📈" color="border-[#10B981]" />
+        <MetricCard title="Compras Concluídas" value={countPurchase} icon="💰" color="border-[#22C55E]" />
       </div>
 
-      {/* VISUAL FUNNEL */}
-      <h2 className="text-xl font-bold text-white mb-6">Sales Funnel Conversion</h2>
+      {/* 7-day chart */}
+      <MetricsChart days={days} />
+
+      {/* Funnel */}
+      <h2 className="text-xl font-bold text-white mb-6 mt-12">Funil de Conversão</h2>
       <div className="bg-[#121826] border border-[#1e293b] rounded-xl p-8 shadow-xl overflow-x-auto">
         <div className="flex flex-col md:flex-row justify-between items-center gap-4 min-w-[700px]">
           <FunnelStage name="NEW LEAD" count={countNewLead} color="bg-slate-800" text="text-slate-300" />
@@ -66,7 +76,7 @@ export default async function DashboardMainPage() {
   );
 }
 
-function MetricCard({ title, value, icon, color }: { title: string, value: number, icon: string, color: string }) {
+function MetricCard({ title, value, icon, color }: { title: string; value: number; icon: string; color: string }) {
   return (
     <div className={`bg-[#121826] border-l-4 ${color} rounded-xl p-6 shadow-md transform hover:-translate-y-1 transition-all`}>
       <div className="flex justify-between items-start">
@@ -74,21 +84,19 @@ function MetricCard({ title, value, icon, color }: { title: string, value: numbe
           <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">{title}</p>
           <h3 className="text-4xl font-black text-white mt-3">{value}</h3>
         </div>
-        <div className="text-2xl bg-[#0B0F19] w-12 h-12 rounded-lg flex items-center justify-center border border-[#1e293b]">
-          {icon}
-        </div>
+        <div className="text-2xl bg-[#0B0F19] w-12 h-12 rounded-lg flex items-center justify-center border border-[#1e293b]">{icon}</div>
       </div>
     </div>
-  )
+  );
 }
 
-function FunnelStage({ name, count, color, text }: { name: string, count: number, color: string, text: string }) {
+function FunnelStage({ name, count, color, text }: { name: string; count: number; color: string; text: string }) {
   return (
-    <div className={`flex-1 w-full text-center p-6 rounded-lg border border-[#1e293b] ${color} relative overflow-hidden group transition-all`}>
+    <div className={`flex-1 w-full text-center p-6 rounded-lg border border-[#1e293b] ${color}`}>
       <h4 className={`text-xs font-black uppercase tracking-widest ${text} mb-3`}>{name}</h4>
       <p className="text-4xl font-bold text-white">{count}</p>
     </div>
-  )
+  );
 }
 
 function FunnelArrow() {
@@ -96,5 +104,5 @@ function FunnelArrow() {
     <div className="hidden md:block text-[#1e293b] shrink-0">
       <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" /></svg>
     </div>
-  )
+  );
 }

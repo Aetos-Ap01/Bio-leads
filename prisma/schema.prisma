@@ -72,6 +72,8 @@ model Tenant {
   users          User[]
   followupStats  FollowupStat[]
   evolutionConfig EvolutionConfig?
+  campaigns      Campaign[]
+  auditLogs      AuditLog[]
 }
 
 model User {
@@ -164,4 +166,28 @@ model CheckoutEvent {
   lead          Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model Campaign {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  status      String   @default("DRAFT") // DRAFT | ACTIVE | PAUSED | FINISHED
+  type        String   @default("BROADCAST") // BROADCAST | DRIP | RETARGETING
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String?
+  action    String   // e.g. "lead.status_changed", "whatsapp.sent", "payment.received"
+  entity    String?  // e.g. "Lead", "CheckoutEvent"
+  entityId  String?
+  meta      String?  // JSON string for extra context
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }

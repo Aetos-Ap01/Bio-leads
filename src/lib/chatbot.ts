@@ -1,21 +1,31 @@
 import { prisma } from './prisma';
 
-export async function processIncomingMessage(tenantId: string, phone: string, text: string, pushName?: string) {
+// ─── Variable interpolation ───────────────────────────────────────
+function interpolate(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? `{${key}}`);
+}
+
+// ─── Structured logger ───────────────────────────────────────────
+function log(level: 'INFO' | 'WARN' | 'ERROR', event: string, ctx: Record<string, unknown>) {
+  const entry = { level, event, ...ctx, ts: new Date().toISOString() };
+  if (level === 'ERROR') console.error(JSON.stringify(entry));
+  else console.log(JSON.stringify(entry));
+}
+
+// ─── Main message processor ──────────────────────────────────────
+export async function processIncomingMessage(
+  tenantId: string,
+  phone: string,
+  text: string,
+  pushName?: string
+) {
   let lead = await prisma.lead.findUnique({
-    where: { 
-      tenantId_phone: {
-        tenantId,
-        phone
-      }
-    },
+    where: { tenantId_phone: { tenantId, phone } },
     include: { product: true }
   });
 
   if (!lead) {
-    const defaultProduct = await prisma.product.findFirst({
-      where: { tenantId }
-    });
-    
+    const defaultProduct = await prisma.product.findFirst({ where: { tenantId } });
     lead = await prisma.lead.create({
       data: {
         tenantId,
@@ -26,6 +36,7 @@ export async function processIncomingMessage(tenantId: string, phone: string, te
       },
       include: { product: true }
     });
+    log('INFO', 'lead.created', { tenantId, leadId: lead.id, phone });
   } else if (!lead.name && pushName) {
     lead = await prisma.lead.update({
       where: { id: lead.id },
@@ -34,26 +45,52 @@ export async function processIncomingMessage(tenantId: string, phone: string, te
     });
   }
 
-  // Store incoming message
   await prisma.message.create({
-    data: { leadId: lead.id, content: text, role: 'user' },
+    data: { leadId: lead.id, content: text, role: 'user' }
   });
 
-  // Funnel State Machine
+  log('INFO', 'message.received', { tenantId, leadId: lead.id, phone, status: lead.status });
+
+  // ── Variable context for interpolation ──
+  const vars: Record<string, string> = {
+    leadName: lead.name || 'você',
+    productName: lead.product?.name || 'nosso produto',
+    productPrice: lead.product?.price
+      ? lead.product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+      : '19,90',
+    checkoutUrl: lead.product?.checkoutUrl || 'https://pay.kiwify.com.br/VuuSifA',
+  };
+
+  // ── Try to use tenant script steps first ──
+  const script = await prisma.script.findFirst({
+    where: { tenantId },
+    include: { steps: { orderBy: { order: 'asc' } } }
+  });
+
+  // ── State machine ──
   switch (lead.status) {
-    case 'NEW_LEAD':
+    case 'NEW_LEAD': {
       await prisma.lead.update({ where: { id: lead.id }, data: { status: 'DIAGNOSIS' } });
-      await sendBotMessage(tenantId, lead.id, phone, "Talvez ninguém tenha te dito isso ainda...\nMas a mulher que você era antes de tudo que aconteceu ainda existe.");
+
+      const step0 = script?.steps.find(s => s.hook === 'NEW_LEAD');
+      const step1 = script?.steps.find(s => s.hook === 'DIAGNOSIS');
+      const step2 = script?.steps.find(s => s.hook === 'OFFER_SENT');
+
+      const msg0 = step0?.messageText ||
+        "Talvez ninguém tenha te dito isso ainda...\nMas a mulher que você era antes de tudo que aconteceu ainda existe.";
+      const msg1 = step1?.messageText ||
+        "Criei um material curto e direto mostrando 5 passos para recuperar sua identidade e confiança.";
+      const msg2 = step2?.messageText ||
+        "Hoje ele está disponível por R${productPrice}.\nSe quiser acessar agora:\n{checkoutUrl}";
+
+      await sendBotMessage(tenantId, lead.id, phone, interpolate(msg0, vars));
       await new Promise(r => setTimeout(r, 1500));
-      await sendBotMessage(tenantId, lead.id, phone, "Criei um material curto e direto mostrando 5 passos para recuperar sua identidade e confiança.");
+      await sendBotMessage(tenantId, lead.id, phone, interpolate(msg1, vars));
       await new Promise(r => setTimeout(r, 1500));
-      
-      const priceStr = lead.product?.price ? lead.product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : "19,90";
-      const checkoutUrl = lead.product?.checkoutUrl || "https://pay.kiwify.com.br/VuuSifA";
-      
-      await sendBotMessage(tenantId, lead.id, phone, `Hoje ele está disponível por R$${priceStr}.\nSe quiser acessar agora:\n${checkoutUrl}`);
+      await sendBotMessage(tenantId, lead.id, phone, interpolate(msg2, vars));
       await prisma.lead.update({ where: { id: lead.id }, data: { status: 'OFFER_SENT' } });
       break;
+    }
 
     case 'DIAGNOSIS':
       await prisma.lead.update({ where: { id: lead.id }, data: { status: 'OFFER_SENT' } });
@@ -63,77 +100,73 @@ export async function processIncomingMessage(tenantId: string, phone: string, te
       const userWantsHuman = /\b(quero|ajuda|suporte|problema|dúvida|não consigo|cartão|boleto|compra)\b/i.test(text);
       if (userWantsHuman) {
         await prisma.lead.update({ where: { id: lead.id }, data: { status: 'MANUAL' } });
-        await sendBotMessage(tenantId, lead.id, phone, "Perfeito, já encaminhei seu caso para atendimento humano. Em breve nosso time conversa com você.");
+        await sendBotMessage(tenantId, lead.id, phone,
+          "Perfeito, já encaminhei seu caso para atendimento humano. Em breve nosso time conversa com você.");
       } else {
         await prisma.lead.update({ where: { id: lead.id }, data: { status: 'CHECKOUT_CLICKED' } });
-        await sendBotMessage(tenantId, lead.id, phone, "Você conseguiu acessar a página? Se tiver qualquer dificuldade com o pagamento ou alguma dúvida, estou aqui para ajudar.");
+        await sendBotMessage(tenantId, lead.id, phone,
+          "Você conseguiu acessar a página? Se tiver qualquer dificuldade com o pagamento ou alguma dúvida, estou aqui para ajudar.");
       }
       break;
     }
 
     case 'CHECKOUT_CLICKED':
       await prisma.lead.update({ where: { id: lead.id }, data: { status: 'MANUAL' } });
-      await sendBotMessage(tenantId, lead.id, phone, "Vou transferir nosso bate-papo para um consultor que vai te dar uma atenção humanizada agora. Um instante, por favor.");
+      await sendBotMessage(tenantId, lead.id, phone,
+        "Vou transferir nosso bate-papo para um consultor que vai te dar uma atenção humanizada agora. Um instante, por favor.");
       break;
 
     case 'PURCHASE_COMPLETED':
       await prisma.lead.update({ where: { id: lead.id }, data: { status: 'MANUAL' } });
-      await sendBotMessage(tenantId, lead.id, phone, "Oi! Consta aqui que o seu acesso já foi liberado. Caso precise de suporte mais avançado, vou te transferir agora para o atendimento humano!");
+      await sendBotMessage(tenantId, lead.id, phone,
+        "Oi! Consta aqui que o seu acesso já foi liberado. Caso precise de suporte mais avançado, vou te transferir agora para o atendimento humano!");
       break;
 
     case 'MANUAL':
-      console.log(`Lead ${lead.id} is in MANUAL mode. Bot ignored message.`);
+      log('INFO', 'message.manual_ignored', { tenantId, leadId: lead.id, phone });
       break;
-      
+
     default:
-      console.log(`Unknown status ${lead.status}`);
+      log('WARN', 'message.unknown_status', { tenantId, leadId: lead.id, status: lead.status });
       break;
   }
 }
 
-export async function sendBotMessage(tenantId: string, leadId: string, phone: string, text: string) {
-  // 1. Store message in database
+// ─── Send bot message ─────────────────────────────────────────────
+export async function sendBotMessage(
+  tenantId: string,
+  leadId: string,
+  phone: string,
+  text: string
+) {
   await prisma.message.create({
-    data: {
-      leadId,
-      content: text,
-      role: 'system',
-    },
+    data: { leadId, content: text, role: 'system' }
   });
 
-  console.log(`[BOT -> ${phone} (Tenant: ${tenantId})]: ${text}`);
-
-  // 2. Get Evolution config for tenant
-  const evolutionConfig = await prisma.evolutionConfig.findUnique({
-    where: { tenantId },
-  });
+  const evolutionConfig = await prisma.evolutionConfig.findUnique({ where: { tenantId } });
 
   if (!evolutionConfig) {
-    console.warn(`[BOT] No Evolution config found for tenant ${tenantId}. Message saved to DB only.`);
+    log('WARN', 'whatsapp.no_config', { tenantId, leadId, phone });
     return;
   }
 
-  // 3. Send via Evolution API (real WhatsApp delivery)
   try {
     const response = await fetch(`${evolutionConfig.apiUrl}/message/sendText/${tenantId}`, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
-        "apikey": evolutionConfig.globalKey
+        'Content-Type': 'application/json',
+        'apikey': evolutionConfig.globalKey
       },
-      body: JSON.stringify({
-        number: phone,
-        text: text
-      })
+      body: JSON.stringify({ number: phone, text })
     });
 
     if (!response.ok) {
       const errorBody = await response.text();
-      console.error(`[BOT] Evolution API error (${response.status}):`, errorBody);
+      log('ERROR', 'whatsapp.send_failed', { tenantId, leadId, phone, status: response.status, body: errorBody });
     } else {
-      console.log(`[BOT] Message delivered to ${phone} via Evolution API`);
+      log('INFO', 'whatsapp.sent', { tenantId, leadId, phone });
     }
   } catch (e) {
-    console.error("[BOT] Evolution API request failed:", e);
+    log('ERROR', 'whatsapp.request_failed', { tenantId, leadId, phone, error: String(e) });
   }
 }

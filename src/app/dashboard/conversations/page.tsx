@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import ConversationPanel from '@/components/ConversationPanel';
+import ConversationRefresher from '@/components/ConversationRefresher';
 
 export default async function ConversationsPage({ 
   searchParams 
@@ -32,6 +33,7 @@ export default async function ConversationsPage({
 
   return(
     <div className="flex h-[calc(100vh-64px)] bg-[#0B0F19]">
+      <ConversationRefresher intervalMs={5000} />
       {/* LEFT PANEL */}
       <div className="w-80 border-r border-[#1e293b] bg-[#121826] flex flex-col hidden md:flex shrink-0">
         <div className="p-4 border-b border-[#1e293b]">
