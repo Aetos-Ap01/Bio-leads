@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { getServerSession } from "next-auth";
+import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { AddProductButton, ProductCardActions } from "@/components/ProductActions";
