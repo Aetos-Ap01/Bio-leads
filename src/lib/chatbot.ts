@@ -1,6 +1,6 @@
 import { prisma } from './prisma';
 
-export async function processIncomingMessage(tenantId: string, phone: string, text: string) {
+export async function processIncomingMessage(tenantId: string, phone: string, text: string, pushName?: string) {
   let lead = await prisma.lead.findUnique({
     where: { 
       tenantId_phone: {
@@ -20,9 +20,16 @@ export async function processIncomingMessage(tenantId: string, phone: string, te
       data: {
         tenantId,
         phone,
+        name: pushName || null,
         status: 'NEW_LEAD',
         productId: defaultProduct?.id || null
       },
+      include: { product: true }
+    });
+  } else if (!lead.name && pushName) {
+    lead = await prisma.lead.update({
+      where: { id: lead.id },
+      data: { name: pushName },
       include: { product: true }
     });
   }
@@ -52,10 +59,17 @@ export async function processIncomingMessage(tenantId: string, phone: string, te
       await prisma.lead.update({ where: { id: lead.id }, data: { status: 'OFFER_SENT' } });
       break;
 
-    case 'OFFER_SENT':
-      await prisma.lead.update({ where: { id: lead.id }, data: { status: 'CHECKOUT_CLICKED' } });
-      await sendBotMessage(tenantId, lead.id, phone, "Você conseguiu acessar a página? Se tiver qualquer dificuldade com o pagamento ou alguma dúvida, estou aqui para ajudar.");
+    case 'OFFER_SENT': {
+      const userWantsHuman = /\b(quero|ajuda|suporte|problema|dúvida|não consigo|cartão|boleto|compra)\b/i.test(text);
+      if (userWantsHuman) {
+        await prisma.lead.update({ where: { id: lead.id }, data: { status: 'MANUAL' } });
+        await sendBotMessage(tenantId, lead.id, phone, "Perfeito, já encaminhei seu caso para atendimento humano. Em breve nosso time conversa com você.");
+      } else {
+        await prisma.lead.update({ where: { id: lead.id }, data: { status: 'CHECKOUT_CLICKED' } });
+        await sendBotMessage(tenantId, lead.id, phone, "Você conseguiu acessar a página? Se tiver qualquer dificuldade com o pagamento ou alguma dúvida, estou aqui para ajudar.");
+      }
       break;
+    }
 
     case 'CHECKOUT_CLICKED':
       await prisma.lead.update({ where: { id: lead.id }, data: { status: 'MANUAL' } });
@@ -89,24 +103,23 @@ export async function sendBotMessage(tenantId: string, leadId: string, phone: st
 
   console.log(`[BOT -> ${phone} (Tenant: ${tenantId})]: ${text}`);
 
-  // 2. Send via Evolution API (real WhatsApp delivery)
-  const EVOLUTION_URL = process.env.EVOLUTION_API_URL;
-  const EVOLUTION_KEY = process.env.EVOLUTION_GLOBAL_KEY;
+  // 2. Get Evolution config for tenant
+  const evolutionConfig = await prisma.evolutionConfig.findUnique({
+    where: { tenantId },
+  });
 
-  if (!EVOLUTION_URL || !EVOLUTION_KEY) {
-    console.warn("[BOT] Evolution API not configured. Message saved to DB only.");
+  if (!evolutionConfig) {
+    console.warn(`[BOT] No Evolution config found for tenant ${tenantId}. Message saved to DB only.`);
     return;
   }
 
-  // In the SaaS architecture, tenantId maps to the Evolution instance name
-  const instanceName = tenantId;
-
+  // 3. Send via Evolution API (real WhatsApp delivery)
   try {
-    const response = await fetch(`${EVOLUTION_URL}/message/sendText/${instanceName}`, {
+    const response = await fetch(`${evolutionConfig.apiUrl}/message/sendText/${tenantId}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "apikey": EVOLUTION_KEY
+        "apikey": evolutionConfig.globalKey
       },
       body: JSON.stringify({
         number: phone,

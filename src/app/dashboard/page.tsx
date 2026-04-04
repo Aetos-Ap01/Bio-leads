@@ -13,6 +13,13 @@ export default async function DashboardMainPage() {
   const leads = await prisma.lead.findMany({
     where: { tenantId: session.user.tenantId }
   });
+
+  const followupStat = await prisma.followupStat.findFirst({
+    where: { tenantId: session.user.tenantId },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const commercialFollowUpsSent = followupStat?.sentCount ?? 0;
   
   const today = new Date();
   today.setHours(0,0,0,0);
@@ -36,7 +43,7 @@ export default async function DashboardMainPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
         <MetricCard title="Leads Today" value={leadsToday} icon="👥" color="border-[#6366F1]" />
         <MetricCard title="Offers Sent" value={countOffer + countCheckout + countPurchase} icon="🚀" color="border-[#F59E0B]" />
-        <MetricCard title="Checkout Clicked" value={countCheckout + countPurchase} icon="🖱️" color="border-[#3B82F6]" />
+        <MetricCard title="Follow-ups Sent" value={commercialFollowUpsSent} icon="📈" color="border-[#10B981]" />
         <MetricCard title="Purchases Completed" value={countPurchase} icon="💰" color="border-[#22C55E]" />
       </div>
 

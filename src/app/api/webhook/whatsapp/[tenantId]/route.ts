@@ -13,16 +13,27 @@ export async function POST(
     // Real providers like Evolution API will nest this deeply (e.g. data.message.conversation)
     const body = await request.json();
     
-    // Fallback extraction
-    const phone = body.phone || body?.data?.key?.remoteJid?.replace('@s.whatsapp.net', '') || '';
-    const text = body.text || body?.data?.message?.conversation || body?.data?.message?.extendedTextMessage?.text || '';
-
-    if (!phone || !text) {
-      return NextResponse.json({ error: 'Phone and text are required in the payload' }, { status: 400 });
+    // 1. Ignore events that are not message upserts or are sent by the bot itself
+    if (body.event !== 'messages.upsert' || body.data?.key?.fromMe) {
+      return NextResponse.json({ ignored: true });
     }
 
-    // Process using the generic Multi-tenant engine
-    await processIncomingMessage(tenantId, phone, text);
+    // 2. Extract Data (Evolution API pattern)
+    const phone = body.data?.key?.remoteJid?.replace('@s.whatsapp.net', '') || '';
+    const pushName = body.data?.pushName || '';
+    
+    // Support for multiple message types (text, image caption, etc.)
+    const text = body.data?.message?.conversation || 
+                 body.data?.message?.extendedTextMessage?.text || 
+                 body.data?.message?.imageMessage?.caption || 
+                 '';
+
+    if (!phone || !text) {
+      return NextResponse.json({ error: 'Valid phone and text are required' }, { status: 400 });
+    }
+
+    // 3. Process using the Multi-tenant engine
+    await processIncomingMessage(tenantId, phone, text, pushName);
 
     return NextResponse.json({ success: true, message: 'Message processed and funnel triggered' });
   } catch (error) {
