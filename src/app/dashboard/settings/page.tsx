@@ -22,7 +22,7 @@ export default async function SettingsPage() {
     }),
     prisma.evolutionConfig.findUnique({
       where: { tenantId: session.user.tenantId },
-      select: { apiUrl: true, globalKey: true },
+      select: { apiUrl: true, globalKey: true, phoneNumber: true },
     }),
   ]);
 

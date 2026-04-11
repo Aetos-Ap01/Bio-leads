@@ -105,6 +105,84 @@ export async function connectWhatsApp() {
   }
 }
 
+export async function connectWhatsAppByPhone(phoneNumber: string) {
+  const session = await getServerSession(authOptions);
+  const tenantId = session?.user?.tenantId;
+  if (!tenantId) return { error: "Not authenticated" };
+
+  const { prisma } = await import("@/lib/prisma");
+  const config = await prisma.evolutionConfig.findUnique({
+    where: { tenantId }
+  });
+
+  const url = config?.apiUrl || process.env.EVOLUTION_API_URL;
+  const key = config?.globalKey || process.env.EVOLUTION_GLOBAL_KEY;
+
+  if (!url || !key) {
+    return { error: "Evolution API not configured. Please check your settings." };
+  }
+
+  if (!phoneNumber) {
+    return { error: "Phone number is required for phone connection method." };
+  }
+
+  try {
+    // 1. Try to create instance (it might already exist, which is fine)
+    const APP_URL = process.env.NEXTAUTH_URL || "http://localhost:3000";
+    await fetch(`${url}/instance/create`, {
+      method: 'POST',
+      headers: { 
+        "apikey": key, 
+        "Content-Type": "application/json" 
+      },
+      body: JSON.stringify({
+        instanceName: tenantId,
+        token: tenantId,
+        qrcode: false,
+        number: phoneNumber
+      })
+    });
+
+    // 2. Set Webhook for this instance
+    await fetch(`${url}/webhook/set/${tenantId}`, {
+      method: 'POST',
+      headers: { 
+        "apikey": key, 
+        "Content-Type": "application/json" 
+      },
+      body: JSON.stringify({
+        enabled: true,
+        url: `${APP_URL}/api/webhook/whatsapp/${tenantId}`,
+        webhook_by_events: false,
+        events: ["MESSAGES_UPSERT"]
+      })
+    });
+
+    // 3. Try to connect with phone number
+    const response = await fetch(`${url}/instance/connect/${tenantId}`, {
+      method: 'POST',
+      headers: { 
+        "apikey": key,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        number: phoneNumber
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (data.instance?.state === 'open') {
+      return { status: 'CONNECTED' };
+    }
+
+    return { error: "Could not connect with phone number. Please check the number format and try again." };
+  } catch (e: unknown) {
+    const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+    return { error: "Connection to Evolution API failed: " + errorMessage };
+  }
+}
+
 export async function disconnectWhatsApp() {
   const session = await getServerSession(authOptions);
   const tenantId = session?.user?.tenantId;

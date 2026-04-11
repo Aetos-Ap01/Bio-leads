@@ -103,6 +103,7 @@ export async function updateEvolutionConfig(data: FormData) {
   const session = await getSession();
   const apiUrl = data.get("apiUrl") as string;
   const globalKey = data.get("globalKey") as string;
+  const phoneNumber = data.get("phoneNumber") as string;
 
   if (!apiUrl || !globalKey) {
     return { error: "API URL and Global Key are required" };
@@ -110,8 +111,8 @@ export async function updateEvolutionConfig(data: FormData) {
 
   await prisma.evolutionConfig.upsert({
     where: { tenantId: session.user.tenantId! },
-    update: { apiUrl, globalKey, updatedAt: new Date() },
-    create: { tenantId: session.user.tenantId!, apiUrl, globalKey },
+    update: { apiUrl, globalKey, phoneNumber: phoneNumber || null, updatedAt: new Date() },
+    create: { tenantId: session.user.tenantId!, apiUrl, globalKey, phoneNumber: phoneNumber || null },
   });
 
   revalidatePath("/dashboard/settings");

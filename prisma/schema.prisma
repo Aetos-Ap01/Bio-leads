@@ -55,6 +55,7 @@ model EvolutionConfig {
   tenantId        String   @unique
   apiUrl          String
   globalKey       String
+  phoneNumber     String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)

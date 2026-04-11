@@ -15,6 +15,7 @@ interface SettingsClientProps {
   evolutionConfig?: {
     apiUrl: string;
     globalKey: string;
+    phoneNumber?: string | null;
   } | null;
 }
 
@@ -360,6 +361,17 @@ export default function SettingsClient({ user, tenantName, tenantId, evolutionCo
                 )}
               </button>
             </div>
+          </div>
+          <div>
+            <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-2">WhatsApp Phone Number (Optional)</label>
+            <input
+              name="phoneNumber"
+              type="tel"
+              defaultValue={evolutionConfig?.phoneNumber || ""}
+              placeholder="+5511999998888"
+              className="w-full bg-[#0B0F19] border border-[#1e293b] rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
+            />
+            <p className="text-xs text-slate-500 mt-1">Format: +5511999998888 (country code + number)</p>
           </div>
           <div className="flex justify-end pt-2">
             <button
