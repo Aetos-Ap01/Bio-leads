@@ -16,5 +16,5 @@ export default async function ScriptsPage() {
     );
   }
 
-  return <ScriptsClient initialSteps={script.steps as any} />;
+  return <ScriptsClient initialSteps={script.steps} />;
 }

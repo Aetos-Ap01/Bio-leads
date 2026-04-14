@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect, useRef } from "react";
+import { useState, useTransition, useEffect, useRef, useOptimistic } from "react";
 import { toggleManualMode } from "@/actions/leads";
 import { sendWhatsAppMessage, sendCheckoutMessage } from "@/actions/whatsapp";
 
@@ -33,13 +33,22 @@ interface Lead {
 export default function ConversationPanel({ lead }: { lead: Lead }) {
   const [inputText, setInputText] = useState("");
   const [isPending, startTransition] = useTransition();
-  const [optimisticMessages, setOptimisticMessages] = useState(lead.messages);
+  const [optimisticMessages, dispatchOptimistic] = useOptimistic<
+    Message[],
+    { type: "add"; message: Message } | { type: "remove"; id: string } | { type: "replace"; messages: Message[] }
+  >(lead.messages, (state, action) => {
+    switch (action.type) {
+      case "add":
+        return [...state, action.message];
+      case "remove":
+        return state.filter((m) => m.id !== action.id);
+      case "replace":
+        return action.messages;
+      default:
+        return state;
+    }
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  // Sync with props when lead changes
-  useEffect(() => {
-    setOptimisticMessages(lead.messages);
-  }, [lead.messages]);
 
   // Scroll to bottom
   useEffect(() => {
@@ -56,19 +65,19 @@ export default function ConversationPanel({ lead }: { lead: Lead }) {
 
     // Optimistic Update
     const tempId = Math.random().toString();
-    setOptimisticMessages(prev => [...prev, {
+    dispatchOptimistic({ type: "add", message: {
       id: tempId,
       content: messageContent,
       role: 'system',
       createdAt: new Date()
-    }]);
+    }});
     
     startTransition(async () => {
       const result = await sendWhatsAppMessage(lead.phone, messageContent, lead.id);
       if (!result.success) {
         alert("Erro ao enviar: " + result.error);
         // Rollback if failed
-        setOptimisticMessages(prev => prev.filter(m => m.id !== tempId));
+        dispatchOptimistic({ type: "remove", id: tempId });
       }
     });
   };
@@ -87,12 +96,12 @@ export default function ConversationPanel({ lead }: { lead: Lead }) {
         alert(result.error);
       } else {
         // Add checkout message optimistically
-        setOptimisticMessages(prev => [...prev, {
+        dispatchOptimistic({ type: "add", message: {
           id: Math.random().toString(),
           content: "Checkout link sent successfully.",
           role: 'system',
           createdAt: new Date()
-        }]);
+        }});
       }
     });
   };

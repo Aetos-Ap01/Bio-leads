@@ -2,18 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { saveAllSteps } from "@/actions/scripts";
-
-interface Step {
-  id: string;
-  name: string | null;
-  type: string | null;
-  hook: string | null;
-  messageText: string;
-  delayMins: number | null;
-}
+import type { ScriptStep } from "@prisma/client";
 
 interface ScriptsClientProps {
-  initialSteps: Step[];
+  initialSteps: ScriptStep[];
 }
 
 export default function ScriptsClient({ initialSteps }: ScriptsClientProps) {
