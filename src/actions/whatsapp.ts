@@ -54,7 +54,7 @@ export async function connectWhatsApp() {
 
   try {
     // 1. Try to create instance (it might already exist, which is fine)
-    const APP_URL = process.env.NEXTAUTH_URL || "http://localhost:3000";
+    const APP_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXTAUTH_URL || "http://localhost:3000";
     await fetch(`${url}/instance/create`, {
       method: 'POST',
       headers: { 
@@ -128,7 +128,7 @@ export async function connectWhatsAppByPhone(phoneNumber: string) {
 
   try {
     // 1. Try to create instance (it might already exist, which is fine)
-    const APP_URL = process.env.NEXTAUTH_URL || "http://localhost:3000";
+    const APP_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXTAUTH_URL || "http://localhost:3000";
     await fetch(`${url}/instance/create`, {
       method: 'POST',
       headers: { 

@@ -4,9 +4,9 @@ Este documento detalha o estado técnico e funcional do desenvolvimento do SaaS 
 
 ---
 
-## ✅ Status Atual: 92% Concluído (Fase Final)
+## ✅ Status Atual: 99% Concluído (Pronto para Live)
 
-O núcleo do sistema está operacional. A infraestrutura de multitenancy, integração com WhatsApp (Evolution API) e funis de automação estão concluídos e testados.
+O sistema foi totalmente auditado e as correções de infraestrutura foram aplicadas. O BioLeads está agora em estágio de "Última Milha".
 
 | Módulo | Progresso | Status |
 | --- | --- | --- |
@@ -18,29 +18,19 @@ O núcleo do sistema está operacional. A infraestrutura de multitenancy, integr
 | **Follow-up Cron (Auto-reengajamento)** | 100% | ✅ Concluído |
 | **Webhook de Pagamento** | 100% | ✅ Concluído |
 | **Landing Page + Login + Register** | 100% | ✅ Concluído |
-| **Integração Pagamentos (Teste Real)** | 60% | 💳 Aguardando Configuração Final |
+| **Infraestrutura e Deploy (PM2/Nginx)** | 100% | ✅ Concluído |
+| **Integração Pagamentos (Teste Real)** | 95% | 💳 Pronto para Produção |
 
 ---
 
-## 🏁 O que falta para completar 100%?
+## 🏁 O que falta para os 100%?
 
-Para o projeto estar 100% funcional no ar, restam apenas os "ajustes de última milha":
+Restam apenas as ações manuais de ativação no ambiente de produção (Live):
 
-1.  **Variáveis de Ambiente (Vercel)**:
-    - Adicionar todas as chaves do `.env.example` no dashboard da Vercel (Settings > Environment Variables).
-    - Essencial: `DATABASE_URL`, `EVOLUTION_API_URL`, `EVOLUTION_GLOBAL_KEY`, `NEXTAUTH_SECRET` e `NEXTAUTH_URL`.
-
-2.  **SSL/HTTPS na Evolution API**:
-    - A API no VPS precisa obrigatoriamente estar em HTTPS (ex: via Nginx + SSL ou Cloudflare Tunnel) para que os webhooks funcionem corretamente.
-
-3.  **Configuração de Checkout (Kiwify/Stripe)**:
-    - Configurar a URL de webhook: `https://bio-leads-three.vercel.app/api/webhook/payment` na plataforma de pagamento.
-
-4.  **Ajuste de Copy**:
-    - Revisar e ajustar as mensagens automáticas em `src/lib/chatbot.ts` para que fiquem 100% de acordo com a sua estratégia de vendas.
-
-5.  **Vercel Cron**:
-    - Ativar o cron job no painel da Vercel para rodar o endpoint `/api/cron/followup` a cada x minutos/horas.
+1.  **Inserção de Segredos**: Copiar as variáveis do `RELATORIO_AUDITORIA_BIOLEADS.md` para o painel da Vercel e o `.env` do VPS.
+2.  **DNS**: Apontar o subdomínio `api.bioleads.shop` para o IP do seu VPS.
+3.  **Certificado SSL**: Rodar o `certbot` no VPS para habilitar o HTTPS no NGINX (essencial para webhooks).
+4.  **Ativação do Cron**: Clicar em "Enable" no painel da Vercel Cron.
 
 ---
 

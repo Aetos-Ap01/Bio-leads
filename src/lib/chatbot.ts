@@ -12,6 +12,66 @@ function log(level: 'INFO' | 'WARN' | 'ERROR', event: string, ctx: Record<string
   else console.log(JSON.stringify(entry));
 }
 
+// ─── Claude AI Agent ─────────────────────────────────────────────
+async function callClaudeAgent(
+  systemPrompt: string,
+  history: { role: string; content: string }[],
+  userMessage: string,
+  vars: Record<string, string>
+): Promise<string> {
+  const interpolatedSystem = interpolate(systemPrompt, vars);
+
+  const messages = [
+    ...history.slice(-10).map(m => ({
+      role: m.role === 'user' ? 'user' : 'assistant',
+      content: m.content
+    })),
+    { role: 'user', content: userMessage }
+  ];
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY || '',
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-sonnet-20240620', // Updated to a stable version
+        max_tokens: 500,
+        system: interpolatedSystem,
+        messages
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      log('ERROR', 'claude.api_error', { status: response.status, body: err });
+      return 'Desculpe, estou com uma dificuldade técnica no momento. Um atendente humano vai te ajudar em breve.';
+    }
+
+    const data = await response.json();
+    return data.content?.[0]?.text || 'Não consegui processar sua mensagem.';
+  } catch (e) {
+    log('ERROR', 'claude.request_failed', { error: String(e) });
+    return 'Desculpe, estou com uma dificuldade técnica. Um atendente humano vai te ajudar em breve.';
+  }
+}
+
+// ─── Default system prompt ────────────────────────────────────────
+const DEFAULT_SYSTEM_PROMPT = `Você é um assistente de vendas especializado da Bio Leads.
+Seu objetivo é qualificar leads e conduzir para a compra do produto: {productName} por R${'{productPrice}'}.
+
+Instruções:
+- Seja amigável, natural e persuasivo
+- Responda de forma concisa (máximo 3 linhas por mensagem)
+- Quando o lead demonstrar interesse, envie o link: {checkoutUrl}
+- Se o lead tiver dúvidas técnicas ou problemas com pagamento, diga que vai transferir para atendimento humano e termine com [TRANSFER_HUMAN]
+- Se a compra for confirmada, comemore e termine com [PURCHASE_DONE]
+- Chame o lead pelo nome quando souber: {leadName}
+- Nunca invente informações sobre o produto`;
+
 // ─── Main message processor ──────────────────────────────────────
 export async function processIncomingMessage(
   tenantId: string,
@@ -51,6 +111,11 @@ export async function processIncomingMessage(
 
   log('INFO', 'message.received', { tenantId, leadId: lead.id, phone, status: lead.status });
 
+  if (lead.status === 'MANUAL') {
+    log('INFO', 'message.manual_ignored', { tenantId, leadId: lead.id, phone });
+    return;
+  }
+
   // ── Variable context for interpolation ──
   const vars: Record<string, string> = {
     leadName: lead.name || 'você',
@@ -61,13 +126,41 @@ export async function processIncomingMessage(
     checkoutUrl: lead.product?.checkoutUrl || 'https://pay.kiwify.com.br/VuuSifA',
   };
 
-  // ── Try to use tenant script steps first ──
+  // ── Check agent mode ──
+  const agentConfig = await prisma.agentConfig.findUnique({ where: { tenantId } });
+  const agentMode = agentConfig?.mode || 'BOT';
+
+  if (agentMode === 'CLAUDE') {
+    // ── Claude AI Mode ──
+    const messageHistory = await prisma.message.findMany({
+      where: { leadId: lead.id },
+      orderBy: { createdAt: 'asc' },
+      take: 20
+    });
+
+    const systemPrompt = agentConfig?.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+    const reply = await callClaudeAgent(systemPrompt, messageHistory, text, vars);
+
+    if (reply.includes('[TRANSFER_HUMAN]')) {
+      await prisma.lead.update({ where: { id: lead.id }, data: { status: 'MANUAL' } });
+      const cleanReply = reply.replace('[TRANSFER_HUMAN]', '').trim();
+      await sendBotMessage(tenantId, lead.id, phone, cleanReply);
+    } else if (reply.includes('[PURCHASE_DONE]')) {
+      await prisma.lead.update({ where: { id: lead.id }, data: { status: 'PURCHASE_COMPLETED' } });
+      const cleanReply = reply.replace('[PURCHASE_DONE]', '').trim();
+      await sendBotMessage(tenantId, lead.id, phone, cleanReply);
+    } else {
+      await sendBotMessage(tenantId, lead.id, phone, reply);
+    }
+    return;
+  }
+
+  // ── BOT Mode (state machine) ──
   const script = await prisma.script.findFirst({
     where: { tenantId },
     include: { steps: { orderBy: { order: 'asc' } } }
   });
 
-  // ── State machine ──
   switch (lead.status) {
     case 'NEW_LEAD': {
       await prisma.lead.update({ where: { id: lead.id }, data: { status: 'DIAGNOSIS' } });
