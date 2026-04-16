@@ -1,5 +1,5 @@
 # Script para Sincronizar Projeto com VPS (Windows PowerShell)
-# Uso: .\sync-vps.ps1 -UserIP "usuario@ip-do-servidor" -RemotePath "/var/www/bioleads"
+# Uso: .\sync-vps.ps1 -UserIP "root@ip-do-servidor" -RemotePath "/var/www/bioleads"
 
 param (
     [Parameter(Mandatory=$true)]

@@ -1,11 +1,11 @@
 # Script para Sincronizar Projeto com VPS (Linux/Mac)
-# Uso: ./sync-vps.sh usuario@ip-do-servidor /caminho/no/servidor
+# Uso: ./sync-vps.sh root@ip-do-servidor /var/www/bioleads
 
 USER_IP=$1
 REMOTE_PATH=$2
 
 if [ -z "$USER_IP" ] || [ -z "$REMOTE_PATH" ]; then
-    echo "Uso: ./sync-vps.sh usuario@ip-do-servidor /caminho/no/servidor"
+    echo "Uso: ./sync-vps.sh root@ip-do-servidor /var/www/bioleads"
     exit 1
 fi
 
