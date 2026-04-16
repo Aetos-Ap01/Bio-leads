@@ -94,7 +94,31 @@ pm2 save
 pm2 startup
 ```
 
-### Passo 6: Validação Final
+### Passo 6: Configuração do NGINX no VPS
+Após subir os arquivos, você deve ativar a configuração do Nginx que preparei:
+```bash
+# 1. Copiar o arquivo de configuração para o Nginx
+sudo cp /var/www/bioleads/deploy/nginx/api.bioleads.shop.conf /etc/nginx/sites-available/
+
+# 2. Ativar o site criando um link simbólico
+sudo ln -s /etc/nginx/sites-available/api.bioleads.shop.conf /etc/nginx/sites-enabled/
+
+# 3. Testar a configuração
+sudo nginx -t
+
+# 4. Reiniciar o Nginx para aplicar
+sudo systemctl restart nginx
+```
+
+### Passo 7: Certificado SSL (HTTPS) - Obrigatório
+Para que os webhooks funcionem, você precisa de HTTPS:
+```bash
+sudo apt update
+sudo apt install certbot python3-certbot-nginx -y
+sudo certbot --nginx -d api.bioleads.shop
+```
+
+### Passo 8: Validação Final
 1. **Saúde da API**: `https://api.bioleads.shop/api/health` -> Deve retornar `{"status": "UP"}`.
 2. **Sessão Auth**: `https://bioleads.shop/api/auth/session` -> Deve retornar JSON válido.
 3. **WhatsApp**: Testar a geração de QR Code no dashboard.
